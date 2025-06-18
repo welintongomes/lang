@@ -680,36 +680,39 @@
 
         /* css para o modal de exibir estatisticas dos coraçoes */
         #heartModal {
-    display: none;
-    position: fixed;
-    z-index: 9999;
-    left: 0; top: 0;
-    width: 100%; height: 100%;
-    background-color: rgba(0, 0, 0, 0.5);
-    cursor: pointer;
-}
+            display: none;
+            position: fixed;
+            z-index: 9999;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            cursor: pointer;
+        }
 
-#heartModal .modal-content {
-    background-color: #fff;
-    margin: 10% auto;
-    padding: 20px;
-    border-radius: 10px;
-    width: 90%;
-    max-width: 400px;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-    text-align: center;
-    position: relative;
-    cursor: default; /* Para o conteúdo não parecer clicável */
-}
+        #heartModal .modal-content {
+            background-color: #fff;
+            margin: 10% auto;
+            padding: 20px;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 400px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            text-align: center;
+            position: relative;
+            cursor: default;
+            /* Para o conteúdo não parecer clicável */
+        }
 
-#heartModal .close-button {
-    position: absolute;
-    top: 10px;
-    right: 15px;
-    font-size: 24px;
-    font-weight: bold;
-    cursor: pointer;
-}
+        #heartModal .close-button {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            font-size: 24px;
+            font-weight: bold;
+            cursor: pointer;
+        }
 
         /* .modal {
     display: none;
@@ -1528,20 +1531,19 @@
 
                 gameStats.correctAnswers++;
 
-                // ✅ Ganha 1 vida até o limite de 7
                 const now = Date.now();
                 const lastEarned = parseInt(localStorage.getItem('lastHeartEarnedAt')) || 0;
                 const heartsEarnedToday = parseInt(localStorage.getItem('heartsEarnedToday')) || 0;
 
-                // Só ganha vida se passou pelo menos 1 minuto e não passou do limite diário
                 const canEarnHeart = (now - lastEarned >= 60 * 1000) && (heartsEarnedToday < 10);
 
-                if (canEarnHeart) {
-                    gameStats.lives = Math.min(gameStats.lives + 1, 7); // ou 5, dependendo do seu limite
-                    localStorage.setItem('lastHeartEarnedAt', now.toString());
+                if (canEarnHeart && gameStats.lives < 7) {
+                    gameStats.lives += 1;
+
                     localStorage.setItem('heartsEarnedToday', (heartsEarnedToday + 1).toString());
-                    // showFeedbackMessage("❤️ Você ganhou 1 vida!");
-                } else if (heartsEarnedToday >= 10) {
+                    localStorage.setItem('lastHeartEarnedAt', now.toString());
+                }
+                else if (heartsEarnedToday >= 10) {
                     // showFeedbackMessage("🛑 Você atingiu o limite de 10 corações hoje. Volte amanhã!");
                 } else {
                     const secondsLeft = Math.ceil((60 * 1000 - (now - lastEarned)) / 1000);
@@ -1614,18 +1616,19 @@
                 }, waitTime);
             }
         }
-
+        //funçao para voltar a ganhar corações a cada duas horas reinicia
         function initializeHeartTimers() {
             const now = Date.now();
-            const storedDayStart = localStorage.getItem('heartsDayStart');
-            const isNewDay = !storedDayStart || (now - parseInt(storedDayStart)) >= 24 * 60 * 60 * 1000;
+            const storedDayStart = parseInt(localStorage.getItem('heartsDayStart'));
 
-            if (isNewDay) {
-                console.log("🌅 Novo dia! Reiniciando contador de corações diários.");
+            const isResetTime = isNaN(storedDayStart) || (now - storedDayStart) >= 2 * 60 * 60 * 1000;
+
+            if (isResetTime) {
+                console.log("⏰ Reset de corações a cada 2 horas.");
                 localStorage.setItem('heartsEarnedToday', '0');
                 localStorage.setItem('heartsDayStart', now.toString());
             } else {
-                console.log("📆 Mesmo dia. Corações diários continuam com limite.");
+                console.log("⏳ Ainda não passaram 2 horas desde o último reset.");
             }
         }
 
@@ -1633,22 +1636,26 @@
             const now = Date.now();
             const lastEarned = parseInt(localStorage.getItem('lastHeartEarnedAt')) || 0;
             const heartsEarnedToday = parseInt(localStorage.getItem('heartsEarnedToday')) || 0;
+            const heartsDayStart = parseInt(localStorage.getItem('heartsDayStart')) || now;
 
             const maxHeartsPerDay = 10;
-            const cooldownMs = 60 * 1000; // 1 minuto
+            const cooldownMs = 60 * 1000;
+            const resetIntervalMs = 2 * 60 * 60 * 1000;
 
             const remainingHearts = Math.max(0, maxHeartsPerDay - heartsEarnedToday);
-            const timeSinceLastHeart = now - lastEarned;
-            const timeLeftMs = cooldownMs - timeSinceLastHeart;
 
-            const canEarnNow = timeLeftMs <= 0;
+            const timeLeftForNextHeart = Math.max(0, cooldownMs - (now - lastEarned));
+            const timeLeftForReset = Math.max(0, resetIntervalMs - (now - heartsDayStart));
 
             return {
                 remainingHearts,
-                canEarnNow,
-                timeUntilNextHeartSec: canEarnNow ? 0 : Math.ceil(timeLeftMs / 1000)
+                earnedToday: heartsEarnedToday,
+                canEarnNow: timeLeftForNextHeart <= 0,
+                timeUntilNextHeartMs: timeLeftForNextHeart,
+                timeUntilResetMs: timeLeftForReset
             };
         }
+
 
         function mostrarStatusCoracoes() {
             const status = getHeartStatus();
@@ -2262,25 +2269,34 @@
 
         function getHeartStatus() {
             const now = Date.now();
-            const lastEarned = parseInt(localStorage.getItem('lastHeartEarnedAt')) || 0;
-            const heartsEarnedToday = parseInt(localStorage.getItem('heartsEarnedToday')) || 0;
+
+            // Fornece valor padrão seguro se estiver ausente ou inválido
+            const lastEarnedRaw = localStorage.getItem('lastHeartEarnedAt');
+            const heartsEarnedTodayRaw = localStorage.getItem('heartsEarnedToday');
+            const heartsDayStartRaw = localStorage.getItem('heartsDayStart');
+
+            const lastEarned = isNaN(parseInt(lastEarnedRaw)) ? 0 : parseInt(lastEarnedRaw);
+            const heartsEarnedToday = isNaN(parseInt(heartsEarnedTodayRaw)) ? 0 : parseInt(heartsEarnedTodayRaw);
+            const heartsDayStart = isNaN(parseInt(heartsDayStartRaw)) ? now : parseInt(heartsDayStartRaw);
 
             const maxHeartsPerDay = 10;
-            const cooldownMs = 60 * 1000;
+            const cooldownMs = 60 * 1000; // 1 minuto
+            const resetIntervalMs = 2 * 60 * 60 * 1000; // 2 horas
 
             const remainingHearts = Math.max(0, maxHeartsPerDay - heartsEarnedToday);
-            const timeSinceLastHeart = now - lastEarned;
-            const timeLeftMs = cooldownMs - timeSinceLastHeart;
 
-            const canEarnNow = timeLeftMs <= 0;
+            const timeLeftForNextHeart = Math.max(0, cooldownMs - (now - lastEarned));
+            const timeLeftForReset = Math.max(0, resetIntervalMs - (now - heartsDayStart));
 
             return {
                 remainingHearts,
                 earnedToday: heartsEarnedToday,
-                canEarnNow,
-                timeUntilNextHeartSec: canEarnNow ? 0 : Math.ceil(timeLeftMs / 1000)
+                canEarnNow: timeLeftForNextHeart <= 0,
+                timeUntilNextHeartMs: timeLeftForNextHeart,
+                timeUntilResetMs: timeLeftForReset
             };
         }
+
 
         function openHeartModal() {
             const modal = document.getElementById('heartModal');
@@ -2288,9 +2304,9 @@
             const status = getHeartStatus();
 
             let html = `
-        <p>❤️ Corações ganhos hoje: <strong>${status.earnedToday}/10</strong></p>
-        <p>❤️ Restantes hoje: <strong>${status.remainingHearts}</strong></p>
-    `;
+                <p>❤️ Corações ganhos hoje: <strong>${status.earnedToday}/10</strong></p>
+                <p>❤️ Restantes hoje: <strong>${status.remainingHearts}</strong></p>
+            `;
 
             if (status.remainingHearts === 0) {
                 html += `<p>🛑 Você atingiu o limite de 10 corações hoje. Volte amanhã!</p>`;
@@ -2302,25 +2318,71 @@
 
             contentEl.innerHTML = html;
             modal.style.display = 'block';
+            updateHeartModalContent(); // Preenche de imediato
+
+            // Atualiza o conteúdo a cada segundo
+            heartInterval = setInterval(updateHeartModalContent, 1000);
         }
+
+        function updateHeartModalContent() {
+            const contentEl = document.getElementById('heartStatusContent');
+            const status = getHeartStatus();
+
+            const formatTime = (ms) => {
+                if (isNaN(ms) || ms <= 0) return '0m 0s';
+                const totalSec = Math.ceil(ms / 1000);
+                const h = Math.floor(totalSec / 3600);
+                const m = Math.floor((totalSec % 3600) / 60);
+                const s = totalSec % 60;
+                return `${h > 0 ? `${h}h ` : ''}${m}m ${s}s`;
+            };
+
+            let html = `
+            <p>❤️ Corações ganhos hoje: <strong>${status.earnedToday}/10</strong></p>
+            <p>❤️ Restantes hoje: <strong>${status.remainingHearts}</strong></p>
+            <p>🕒 Novo reset em: <strong>${formatTime(status.timeUntilResetMs)}</strong></p>
+            `;
+
+            if (!status.canEarnNow) {
+                html += `<p>⏳ Próximo coração disponível em: <strong>${formatTime(status.timeUntilNextHeartMs)}</strong></p>`;
+
+                const progressPercent = Math.floor(100 * (1 - status.timeUntilNextHeartMs / 60000));
+                html += `
+            <div style="margin-top: 10px;">
+                <div style="height: 10px; background: #ddd; border-radius: 5px;">
+                    <div style="height: 10px; width: ${progressPercent}%; background: #4caf50; border-radius: 5px;"></div>
+                </div>
+                <small>${progressPercent}% até o próximo coração</small>
+            </div>
+            `;
+            } else if (status.remainingHearts > 0) {
+                html += `<p>✅ Você já pode ganhar um novo coração!</p>`;
+            }
+
+            contentEl.innerHTML = html;
+        }
+
+
 
         function closeHeartModal() {
             document.getElementById('heartModal').style.display = 'none';
         }
         function setupModalOutsideClick(modalId, closeFunction) {
-    const modal = document.getElementById(modalId);
-    window.addEventListener('click', function(event) {
-        if (event.target === modal) {
-            closeFunction();
+            const modal = document.getElementById(modalId);
+            window.addEventListener('click', function (event) {
+                if (event.target === modal) {
+                    closeFunction();
+                }
+            });
         }
-    });
-}
-function closeHeartModal() {
-    document.getElementById('heartModal').style.display = 'none';
-}
+        function closeHeartModal() {
+            document.getElementById('heartModal').style.display = 'none';
+            clearInterval(heartInterval);
+        }
 
-// Chama isso ao carregar a página ou ao abrir o modal pela primeira vez
-setupModalOutsideClick('heartModal', closeHeartModal);
+
+        // Chama isso ao carregar a página ou ao abrir o modal pela primeira vez
+        setupModalOutsideClick('heartModal', closeHeartModal);
 
 
 
